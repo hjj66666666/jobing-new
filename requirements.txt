@@ -1,0 +1,49 @@
+# 基础依赖
+numpy>=1.20.0
+opencv-python>=4.5.0
+Pillow>=8.0.0
+matplotlib>=3.3.0
+requests>=2.25.0
+pyyaml>=5.4.0
+
+# 深度学习框架
+torch>=1.8.0
+torchvision>=0.9.0
+ultralytics>=8.0.0  # YOLO
+
+# 相机SDK
+pyrealsense2>=2.50.0
+
+# 硬件控制
+pyserial>=3.5
+pyfirmata>=1.1.0
+RPi.GPIO>=0.7.0  # GPIO控制，用于Jetson Orin Nano直接连接传感器
+
+# 云端服务
+flask>=2.0.0
+gunicorn>=20.1.0  # 用于生产环境部署
+
+# 工具库
+tqdm>=4.60.0
+scipy>=1.6.0
+scikit-learn>=0.24.0
+scikit-image>=0.18.0
+
+# 日志和监控
+logging>=0.5.1.2
+tensorboard>=2.5.0  # 可选，用于模型训练监控
+
+# 并行处理
+joblib>=1.0.0
+threadpoolctl>=2.1.0
+
+# 可选依赖
+# pyslam  # SLAM功能，需要单独安装
+# open3d>=0.13.0  # 3D点云处理，可选
+# 云端视觉增强功能所需的依赖
+fastapi>=0.68.0
+uvicorn>=0.15.0
+python-multipart>=0.0.5
+pydantic>=1.8.0
+base64io>=1.0.0
+python-dotenv>=0.19.0

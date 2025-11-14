@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PingPong Collector Control</title>
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --text: #1f2328;
+        --muted: #6a737d;
+        --primary: #2563eb;
+        --primary-hover: #1d4ed8;
+        --danger: #dc2626;
+        --danger-hover: #b91c1c;
+        --border: #e5e7eb;
+        --shadow: 0 2px 8px rgba(0,0,0,.06);
+        --radius: 12px;
+      }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+      .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+      .header { position: sticky; top: 0; z-index: 5; background: rgba(255,255,255,.8); backdrop-filter: saturate(150%) blur(8px); border-bottom: 1px solid var(--border); }
+      .header-inner { max-width: 1100px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; }
+      .brand { font-weight: 700; letter-spacing: .3px; }
+      .row { margin: 10px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      input[type=text] { padding: 10px 12px; width: 280px; border: 1px solid var(--border); border-radius: 8px; outline: none; background: #fff; }
+      input[type=text]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+      .btn { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: #fff; cursor: pointer; transition: all .15s ease; }
+      .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+      .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+      .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+      .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+      .btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+      .btn-ghost { background: #fff; color: var(--text); }
+      .status { font-size: 12px; color: var(--muted); white-space: pre-line; }
+      .card { background: var(--card); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius); margin: 16px 0; box-shadow: var(--shadow); }
+      .title { font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+      .title::after { content: ""; height: 1px; background: var(--border); flex: 1; margin-left: 8px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+      .video-box { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+      .video-box img { width: 100%; height: 100%; object-fit: contain; border: 0; background: #000; }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="header-inner">
+        <div class="brand">🏓 乒乓球捡取系统</div>
+      </div>
+    </div>
+    <div class="container">
+    <div class="card">
+      <div class="title">连接 Jetson Orin Nano</div>
+      <div class="row">
+        <label>后端地址（IP:端口）</label>
+        <input id="backend" type="text" placeholder="192.168.1.50:8000" />
+        <button class="btn btn-primary" onclick="connect()">连接</button>
+        <button class="btn btn-ghost" onclick="fetchStatus()">刷新状态</button>
+      </div>
+      <div id="status" class="status">未连接</div>
+    </div>
+
+    <div class="card">
+      <div class="title">视频流</div>
+      <div class="video-box">
+        <img id="video" alt="video stream" />
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">自动控制</div>
+      <div class="grid">
+        <button class="btn btn-primary" onclick="autoStart()">自动拾取开始</button>
+        <button class="btn" onclick="autoStop()">自动拾取停止</button>
+        <button class="btn btn-danger" onclick="stopMove()">急停</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">手动控制</div>
+      <div class="grid">
+        <button class="btn" onclick="move('left')">左移</button>
+        <button class="btn" onclick="move('right')">右移</button>
+        <button class="btn" onclick="move('front')">前进</button>
+        <button class="btn" onclick="move('back')">后退</button>
+        <button class="btn btn-primary" onclick="pick()">确定拾取</button>
+      </div>
+    </div>
+    </div>
+
+    <script>
+      let base = '';
+      function setStatus(msg){
+        const el = document.getElementById('status');
+        el.textContent = msg;
+      }
+      function connect(){
+        const v = document.getElementById('backend').value.trim();
+        if(!v){ setStatus('请填写后端地址，如 192.168.1.50:8000'); return; }
+        base = `http://${v}`;
+        document.getElementById('video').src = `${base}/video`;
+        fetchStatus();
+      }
+      async function fetchStatus(){
+        if(!base){ setStatus('未连接'); return; }
+        try{
+          const res = await fetch(`${base}/api/status`);
+          const data = await res.json();
+          setStatus(`连接成功\n模式: ${data.mode}\n云端视觉: ${data.cloud_vision}\n检测模式: ${data.detection_mode}\n任务: ${data.task}`);
+        }catch(e){ setStatus('状态获取失败：' + e); }
+      }
+      async function callApi(path, method='POST', body=null){
+        if(!base){ setStatus('未连接'); return; }
+        try{
+          const res = await fetch(`${base}${path}`, { method, headers: {'Content-Type':'application/json'}, body: body?JSON.stringify(body):null });
+          const txt = await res.text();
+          setStatus(`OK: ${txt}`);
+        }catch(e){ setStatus('请求失败：' + e); }
+      }
+      function move(direction){ callApi('/api/move', 'POST', {direction, speed: 0.4, duration: 0.3}); }
+      function stopMove(){ callApi('/api/stop'); }
+      function autoStart(){ callApi('/api/auto_start'); }
+      function autoStop(){ callApi('/api/auto_stop'); }
+      function pick(){ callApi('/api/pick'); }
+
+      // 支持从 URL 查询参数预填地址 ?backend=192.168.1.50:8000
+      (function init(){
+        const params = new URLSearchParams(location.search);
+        const b = params.get('backend');
+        if(b){ document.getElementById('backend').value = b; connect(); }
+      })();
+    </script>
+  </body>
+  </html>
+
+
