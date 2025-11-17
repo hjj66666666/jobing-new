@@ -10,7 +10,7 @@ from modules.navigation import (
 import math
 
 class Controller:
-    def __init__(self, vision_system, car_move_func, arm_serial, read_sensors_func=None):
+    def __init__(self, vision_system, car_move_func, arm_serial):
         """
         初始化控制器
         :param vision_system: 视觉系统对象
@@ -21,7 +21,6 @@ class Controller:
         self.vision_system = vision_system
         self.car_move_func = car_move_func
         self.arm_serial = arm_serial
-        self.read_sensors_func = read_sensors_func
         self._stop_requested = False
 
     def arm_control(self, position):
@@ -268,7 +267,7 @@ class Controller:
                     
                     # 最终确认位置
                     intr, depth_intrin, rgb, depth, aligned_depth_frame, results, results_boxes, camera_coordinate_list, rgb_display = self.vision_system.vision_process()
-                    pos = self.vision_system.choose_pingpang(results_boxes, camera_coordinate_list)
+                    pos = self.vision_system.choose_pingpang_new(results_boxes, camera_coordinate_list, rgb, depth, aligned_depth_frame, depth_intrin)
                     
                     if pos is not None:
                         transformed_pos = self.vision_system.position_change(pos.copy())
@@ -530,10 +529,8 @@ class Controller:
                 # 旋转90度到下一个方向
                 print(f"旋转90度到下一个方向...")
                 
-                # 计算旋转时间（根据速度和角度估算）
-                search_speed = Config.search_speed
-                rotation_time = Config.search_rotation_angle / (search_speed * 100)  # 估算的旋转时间
-                rotation_time = max(0.5, min(2.0, rotation_time))  # 限制在合理范围内
+                # 计算旋转时间
+                rotation_time = Config.search_pause_time
                 
                 # 执行旋转
                 self.car_move_func("left", Config.search_speed)

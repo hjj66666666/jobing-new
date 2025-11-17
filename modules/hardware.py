@@ -65,7 +65,7 @@ def init_arduino():
                 pena1.write(speed)
                 pena2.write(speed)
 
-        return car_move, board, read_sensors
+        return car_move, board
 
     except Exception as e:
         print(f"Arduino初始化失败: {e}")
@@ -75,7 +75,7 @@ def init_arduino():
             print(f"模拟车辆移动: {direction}, 速度: {speed}")
         
 
-        return car_move, None, read_sensors
+        return car_move, None
 
 
 def init_arm():

@@ -15,14 +15,14 @@ def main():
     print(f"运行模式: {['自动捡球', '手动回车捡球', '云端决策捡球'][Config.mode]}")
 
     # 初始化硬件
-    car_move_func, _, read_sensors_func = init_arduino()
+    car_move_func, _ = init_arduino()
     arm_serial = init_arm()
 
     # 初始化视觉系统
     vision_system = VisionSystem()
 
     # 初始化控制器
-    controller = Controller(vision_system, car_move_func, arm_serial, read_sensors_func)
+    controller = Controller(vision_system, car_move_func, arm_serial)
 
     try:
         while True:

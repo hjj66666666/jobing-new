@@ -4,12 +4,12 @@ class Config:
 
     # 模型配置
     # 轻量模型（用于近距离检测）
-    light_model = "./table_tennis.engine"  # 轻量乒乓球检测模型
+    light_model = "./table_tennis.pt"  # 轻量乒乓球检测模型
     # 大体积模型（用于远距离检测）
-    heavy_model = "./table_tennis.pt"  # 大体积乒乓球检测模型
+    heavy_model = "./table_tennis_far.pt"  # 大体积乒乓球检测模型
     
     obstacle_model = "./yolo11n.pt"  # 障碍物检测模型（使用YOLO官方模型）
-    light_model_confidence_threshold = 0.45  # 轻量模型置信度阈值
+    light_model_confidence_threshold = 0.1  # 轻量模型置信度阈值
     heavy_model_confidence_threshold = 0.4  # 大体积模型置信度阈值
     obstacle_confidence_threshold = 0.4  # 障碍物检测置信度阈值
     
@@ -19,7 +19,7 @@ class Config:
 
     # 硬件配置
     arm_switch = True  # 机械臂通信开关
-    serial_port1 = "COM5"  # 机械臂串口端口号
+    serial_port1 = "/dev/ttyCH341USB0"  # 机械臂串口端口号
     serial_port2 = "/dev/ttyACM0"  # 车辆串口端口号
 
 
@@ -78,7 +78,8 @@ class Config:
     vehicle_safety_margin = 100  # 车辆安全边距（毫米）
     speed = 0.6  # 车辆速度（0-1），从0.5增加到0.6
     turn_speed = 0.55  # 转向速度（0-1），从0.45增加到0.55
-    search_speed = 0.3  # 360度搜索时的速度（0-1）
+    search_speed = 0.4  # 360度搜索时的速度（0-1）
+    search_pause_time = 2
 
     # 坐标系转换参数
     x_offset = 0  # X轴偏移量（米）
