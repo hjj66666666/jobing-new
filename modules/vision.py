@@ -107,7 +107,7 @@ class VisionSystem:
                 print(f"连续 {self.consecutive_no_detection} 次未检测到乒乓球，切换到云端识别模式")
 
         # 返回当前模式和移动时间倍数
-        time_multiplier = self.move_time_multiplier if self.detection_mode == "cloud" else 1.0
+        time_multiplier = self.move_time_multiplier
         return self.detection_mode, time_multiplier
         
     def switch_model(self, model_type):
@@ -704,20 +704,36 @@ class VisionSystem:
                 box_area = box_width * box_height
                 estimated_distance = 1.0  # 默认估计距离为1米
                     
-                # 改进的距离估计逻辑
+                # 根据实际测试数据改进的距离估计逻辑
+                # 实际测试数据：3500对应0.3m，10000对应0.16m，15000对应0.14m
                 if box_area > 0:
-                    # 使用非线性映射，更好地处理近距离情况
-                    reference_area = 10000  # 参考面积
-                    area_ratio = reference_area / box_area
-                
-                    # 当边界框很大时（近距离），使用更保守的估计
-                    if box_area > 15000:  # 非常近的距离
-                        estimated_distance = 0.3 + (0.2 * area_ratio)  # 最小估计为0.3米
-                    elif box_area > 8000:  # 较近的距离
-                        estimated_distance = 0.5 + (0.3 * area_ratio)  # 最小估计为0.5米
+                    # 使用分段函数更准确地拟合实际测试数据
+                    if box_area >= 15000:
+                        # 非常近的距离：15000对应0.14m，面积更大时保持在0.14m附近
+                        estimated_distance = 0.14 + (15000 - box_area) * 0.000002
+                        estimated_distance = max(0.12, estimated_distance)  # 限制最小值
+                    elif box_area >= 10000:
+                        # 中等近距离：10000-15000之间，使用线性插值
+                        # 10000对应0.16m，15000对应0.14m
+                        t = (box_area - 10000) / 5000
+                        estimated_distance = 0.16 + t * (0.14 - 0.16)
+                    elif box_area >= 3500:
+                        # 中距离：3500-10000之间，使用非线性映射
+                        # 3500对应0.3m，10000对应0.16m
+                        area_ratio = box_area / 3500
+                        # 使用指数函数拟合曲线关系
+                        estimated_distance = 0.3 * (0.16/0.3) ** (math.log(area_ratio, 10000/3500))
                     else:
-                        # 远距离使用原来的估计方法，但限制最大值
-                        estimated_distance = min(1.5, max(0.7, area_ratio * 0.5))
+                        # 远距离：使用反向比例关系，但更符合实际测试
+                        # 3500对应0.3m，更小的面积对应更远的距离
+                        base_distance = 0.3
+                        base_area = 3500
+                        # 使用平方根倒数关系，距离随面积减小而增加
+                        estimated_distance = base_distance * math.sqrt(base_area / box_area)
+                        # 限制最大值
+                        estimated_distance = min(2.0, estimated_distance)
+                    
+                    print(f"距离估计 - 边界框面积: {box_area}, 估计距离: {estimated_distance:.3f}m")
 
                 # 计算中心点
                 center_x = int((x1 + x2) / 2)
@@ -735,7 +751,7 @@ class VisionSystem:
                 
                 print(f"基于图像位置估计乒乓球位置: [{estimated_position[0]:.2f}, {estimated_position[1]:.2f}, {estimated_position[2]:.2f}], 边界框面积: {box_area}")
                 return estimated_position
-                    
+            
             return None
                     
         # 如果有多个有效目标，选择最近的一个

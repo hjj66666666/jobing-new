@@ -339,7 +339,7 @@ class Controller:
                     print(f"当前模式: {detection_mode}, 模型类型: {model_type}, 移动时间倍数: {move_time_multiplier}")
 
                     # 优先调整左右位置
-                    if abs(x_diff) > abs(distance_diff) * 0.5 or abs(x_diff) > 20:
+                    if abs(x_diff) > abs(distance_diff) * 0.5 and abs(x_diff) > 20:
                         # 调整左右位置
                         direction = "right" if x_diff > 0 else "left"
                         
@@ -791,6 +791,10 @@ class Controller:
                                     self.vision_system.detection_mode = "local"
                                     if found_pingpang:
                                         break
+                                    else:
+                                        # 云端检测失败
+                                        print("云端检测四个方向都失败，结束搜索")
+                                        return False
                         else:
                             # 已经是大体积模型且四个方向都没找到，尝试云端兜底检测 - 四个方向
                             if Config.use_cloud_vision:
@@ -801,6 +805,10 @@ class Controller:
                                 self.vision_system.detection_mode = "local"
                                 if found_pingpang:
                                     break
+                                else:
+                                    # 云端检测失败
+                                    print("云端检测四个方向都失败，结束搜索")
+                                    return False
                 
                 # 显示图像
                 cv2.imshow('RGB image', rgb_display)

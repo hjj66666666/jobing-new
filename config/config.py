@@ -88,7 +88,7 @@ class Config:
     rotate_x = 15  # 绕X轴旋转角度（度）
 
     # 乒乓球捡取参数
-    target_distance = 220  # 目标距离（毫米）
+    target_distance = 222  # 目标距离（毫米）
     target_x = 0  # 目标X轴位置（毫米）
     max_attempts = 15  # 最大尝试次数
     
