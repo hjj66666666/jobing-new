@@ -132,24 +132,6 @@ class VisionSystem:
             return True
         print(f"已经在使用{model_type}模型")
         return False
-    
-    def check_model_downgrade(self, detection_results):
-        """
-        检查是否需要降级到轻量模型
-        :param detection_results: 检测结果
-        :return: 是否需要降级
-        """
-        # 如果当前是大体积模型，且检测到乒乓球，考虑降级到轻量模型
-        if self.model_type == "heavy" and detection_results and len(detection_results) > 0:
-            # 计算乒乓球的距离
-            for box in detection_results:
-                # 检查是否有置信度信息
-                if hasattr(box, 'conf'):
-                    # 如果乒乓球距离较近且检测置信度较高，允许降级
-                    if float(box.conf) > 0.7:
-                        print(f"检测到近距离高置信度乒乓球，满足降级条件")
-                        return True
-        return False
         
     def check_auto_downgrade(self, results_boxes):
         """
@@ -158,25 +140,24 @@ class VisionSystem:
         :return: 是否需要降级
         """
         # 如果当前使用的是大体积模型
-        if self.model_type == "heavy":
-            # 检查是否有高置信度的检测结果
-            high_conf_detections = 0
+        if self.model_type == "heavy" and results_boxes:
+            # 计算最大检测框面积
+            max_area = 0
             for box in results_boxes:
-                if float(box.conf) > Config.downgrade_confidence_threshold:
-                    high_conf_detections += 1
+                # 计算检测框的宽度和高度
+                width = box.xyxy[0][2] - box.xyxy[0][0]
+                height = box.xyxy[0][3] - box.xyxy[0][1]
+                # 计算面积
+                area = width * height
+                # 更新最大面积
+                if area > max_area:
+                    max_area = area
             
-            # 如果有高置信度的检测结果，增加连续成功检测计数
-            if high_conf_detections > 0:
-                self.consecutive_success_detections += 1
-                
-                # 如果连续成功检测次数达到阈值，自动降级
-                if self.consecutive_success_detections >= Config.auto_downgrade_threshold:
-                    self.switch_model("light")
-                    self.consecutive_success_detections = 0
-                    return True
-            else:
-                # 没有高置信度的检测结果，重置计数
-                self.consecutive_success_detections = 0
+            # 如果最大检测框面积大于400，自动降级
+            if max_area > 550:
+                print(f"检测到最大框面积{max_area:.2f}大于400，满足降级条件")
+                self.switch_model("light")
+                return True
         
         return False
         # """
@@ -223,7 +204,7 @@ class VisionSystem:
         获取当前移动时间的倍数
         :return: 移动时间倍数
         """
-        return self.move_time_multiplier if self.detection_mode == "cloud" else 1.0
+        return self.move_time_multiplier if self.detection_mode == "cloud" else 2.0
 
     def check_need_cloud_vision(self, results_boxes):
         """

@@ -339,7 +339,7 @@ class Controller:
                     print(f"当前模式: {detection_mode}, 模型类型: {model_type}, 移动时间倍数: {move_time_multiplier}")
 
                     # 优先调整左右位置
-                    if abs(x_diff) > abs(distance_diff) * 1.5 and abs(x_diff) > 30:
+                    if abs(x_diff) > abs(distance_diff) * 0.5 or abs(x_diff) > 20:
                         # 调整左右位置
                         direction = "right" if x_diff > 0 else "left"
                         
@@ -367,7 +367,7 @@ class Controller:
                         move_direction = direction
                     
                     # 调整前后距离
-                    elif abs(distance_diff) > 20:
+                    elif abs(distance_diff) > 30:
                         # 调整前后距离
                         direction = "front" if distance_diff > 0 else "back"
                         
@@ -486,7 +486,7 @@ class Controller:
                 time.sleep(Config.search_pause_time)
                 
                 # 在当前方向进行多次检测，提高可靠性
-                detection_attempts = 3
+                detection_attempts = 2
                 for attempt in range(detection_attempts):
                     # 进行视觉处理
                     intr, depth_intrin, rgb, depth, aligned_depth_frame, results, results_boxes, camera_coordinate_list, rgb_display = self.vision_system.vision_process()
@@ -520,7 +520,7 @@ class Controller:
                         break
                     
                     # 短暂等待
-                    time.sleep(0.2)
+                    time.sleep(0.1)
                 
                 # 如果已经搜索了四个方向，退出循环
                 if i == Config.search_direction_count - 1:
@@ -538,7 +538,7 @@ class Controller:
                 time.sleep(rotation_time)
                 self.car_move_func("stop", 0)
                 self.vision_system.set_vehicle_moving_state(False)
-                time.sleep(0.5)  # 等待稳定
+                
             
             print(f"四个方向搜索完成，未找到乒乓球")
             return False, None
@@ -573,12 +573,12 @@ class Controller:
         original_rotation = self.car_move_func("get_rotation", 0)
         
         # 存储原始车辆移动状态
-        original_moving_state = self.vision_system.vehicle_moving
+        original_moving_state = self.vision_system.is_vehicle_moving
         self.vision_system.set_vehicle_moving_state(False)
         
         found_pingpang = False
         
-        for i in range(4):
+        for i in range(6):
             if self._check_interrupt():
                 print("云端检测过程中被中断")
                 self.vision_system.set_vehicle_moving_state(original_moving_state)
@@ -624,12 +624,16 @@ class Controller:
                 break
             
             # 旋转到下一个方向（90度）
-            if i < 3:  # 最后一个方向不需要旋转
-                rotation_time = self.calculate_rotation_time(Config.search_rotation_angle)
-                self._update_status_display(rgb_display, "旋转到下一个方向", vehicle_moving=True)
-                self.car_move_func("rotate", rotation_time)
-                time.sleep(rotation_time + 0.5)  # 额外等待以确保稳定
-        
+            if i < 5:  # 最后一个方向不需要旋转
+                # 计算旋转时间
+                rotation_time = Config.search_pause_time
+                
+                # 执行旋转
+                self.car_move_func("left", Config.search_speed)
+                self.vision_system.set_vehicle_moving_state(True)
+                time.sleep(rotation_time)
+                self.car_move_func("stop", 0)
+                self.vision_system.set_vehicle_moving_state(False)
         
         # 恢复车辆移动状态
         self.vision_system.set_vehicle_moving_state(original_moving_state)

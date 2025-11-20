@@ -4,13 +4,13 @@ class Config:
 
     # 模型配置
     # 轻量模型（用于近距离检测）
-    light_model = "./table_tennis.pt"  # 轻量乒乓球检测模型
+    light_model = "./models/table_tennis_near.pt"  # 轻量乒乓球检测模型
     # 大体积模型（用于远距离检测）
-    heavy_model = "./table_tennis_far.pt"  # 大体积乒乓球检测模型
+    heavy_model = "./models/table_tennis_far.pt"  # 大体积乒乓球检测模型
     
     obstacle_model = "./yolo11n.pt"  # 障碍物检测模型（使用YOLO官方模型）
-    light_model_confidence_threshold = 0.1  # 轻量模型置信度阈值
-    heavy_model_confidence_threshold = 0.4  # 大体积模型置信度阈值
+    light_model_confidence_threshold = 0.8  # 轻量模型置信度阈值
+    heavy_model_confidence_threshold = 0.2  # 大体积模型置信度阈值
     obstacle_confidence_threshold = 0.4  # 障碍物检测置信度阈值
     
     # 检测架构参数
@@ -43,7 +43,7 @@ class Config:
     # 360度搜索参数
     search_rotation_angle = 90  # 360度搜索每次旋转角度（改为90度）
     search_rotation_interval = 2.0  # 360度搜索旋转间隔（秒）
-    search_direction_count = 4  # 360度搜索方向数量（四个方向）
+    search_direction_count = 6  # 360度搜索方向数量（四个方向）
     search_pause_time = 1.0  # 旋转后暂停时间（秒）
     
     # 深度检测参数
@@ -78,8 +78,8 @@ class Config:
     vehicle_safety_margin = 100  # 车辆安全边距（毫米）
     speed = 0.6  # 车辆速度（0-1），从0.5增加到0.6
     turn_speed = 0.55  # 转向速度（0-1），从0.45增加到0.55
-    search_speed = 0.4  # 360度搜索时的速度（0-1）
-    search_pause_time = 2
+    search_speed = 0.5  # 360度搜索时的速度（0-1）
+    search_pause_time = 1.2
 
     # 坐标系转换参数
     x_offset = 0  # X轴偏移量（米）
