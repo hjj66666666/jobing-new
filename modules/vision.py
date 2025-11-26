@@ -688,7 +688,7 @@ class VisionSystem:
                 center_y = int((y1 + y2) / 2)
 
                 # 如果边界框面积超过阈值且位于画面中下部分，认为是近距离情况
-                if box_area > 15000 and center_y > image_center_y:
+                if box_area > 5000 and center_y > image_center_y:
                     print(f"检测到近距离乒乓球（面积: {box_area}，位置: y={center_y}），但无深度数据，返回None")
                     return None
 

@@ -76,7 +76,7 @@ class Config:
     vehicle_width = 300  # 车辆宽度（毫米）
     vehicle_length = 400  # 车辆长度（毫米）
     vehicle_safety_margin = 100  # 车辆安全边距（毫米）
-    speed = 0.6  # 车辆速度（0-1），从0.5增加到0.6
+    speed = 0.4  # 车辆速度（0-1），从0.5增加到0.6
     turn_speed = 0.55  # 转向速度（0-1），从0.45增加到0.55
     search_speed = 0.5  # 360度搜索时的速度（0-1）
     search_pause_time = 1.2
@@ -88,7 +88,7 @@ class Config:
     rotate_x = 15  # 绕X轴旋转角度（度）
 
     # 乒乓球捡取参数
-    target_distance = 222  # 目标距离（毫米）
+    target_distance = 210  # 目标距离（毫米）
     target_x = 0  # 目标X轴位置（毫米）
     max_attempts = 15  # 最大尝试次数
     
