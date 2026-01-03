@@ -4,9 +4,9 @@ class Config:
 
     # 模型配置
     # 轻量模型（用于近距离检测）
-    light_model = "./models/table_tennis_near.pt"  # 轻量乒乓球检测模型
+    light_model = "./models/egg.pt"  # 轻量乒乓球检测模型
     # 大体积模型（用于远距离检测）
-    heavy_model = "./models/table_tennis_far.pt"  # 大体积乒乓球检测模型
+    heavy_model = "./models/egg.pt"  # 大体积乒乓球检测模型
     
     obstacle_model = "./yolo11n.pt"  # 障碍物检测模型（使用YOLO官方模型）
     light_model_confidence_threshold = 0.8  # 轻量模型置信度阈值
@@ -83,14 +83,14 @@ class Config:
 
     # 坐标系转换参数
     x_offset = 0  # X轴偏移量（米）
-    y_offset = 0.08  # Y轴偏移量（米）
-    z_offset = 0.04  # Z轴偏移量（米）
+    y_offset = 0.09  # Y轴偏移量（米）
+    z_offset = 0.02  # Z轴偏移量（米）
     rotate_x = 15  # 绕X轴旋转角度（度）
 
     # 乒乓球捡取参数
     target_distance = 210  # 目标距离（毫米）
     target_x = 0  # 目标X轴位置（毫米）
-    max_attempts = 15  # 最大尝试次数
+    max_attempts = 40  # 最大尝试次数
     
     # 自动降级检测参数
     auto_downgrade_threshold = 2  # 连续成功检测次数达到此值自动降级

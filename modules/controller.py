@@ -50,7 +50,10 @@ class Controller:
         self.arm_serial.write('catch;'.encode())
         self.vision_system.wait_with_vision(2, "抓取乒乓球")
 
-        self.arm_serial.write(f'move;200;0;200;'.encode())
+        self.arm_serial.write(f'move;0;200;200;'.encode())
+        self.vision_system.wait_with_vision(2, "移动到放置位置")
+
+        self.arm_serial.write(f'move;115;0;190;'.encode())
         self.vision_system.wait_with_vision(2, "移动到放置位置")
 
         self.arm_serial.write('release;'.encode())
@@ -76,7 +79,7 @@ class Controller:
             info_list.append('太近')
         if position[1] > 265:
             info_list.append('太远')
-        if position[2] < -30:
+        if position[2] < -55:
             info_list.append('太低')
         if position[2] > 280:
             info_list.append('太高')
@@ -120,13 +123,22 @@ class Controller:
         :param max_attempts: 最大尝试次数，默认使用配置文件中的值
         :return: 是否成功抓取
         """
+           
+        """
+        使用最原始PID参数的自动逼近功能 - 基础对比版本
+        只包含最基本的PID控制，无任何高级功能
+        :param target_distance: 目标Y轴距离(mm)，默认使用配置文件中的值
+        :param target_x: 目标X轴位置(mm)，默认使用配置文件中的值
+        :param max_attempts: 最大尝试次数，默认使用配置文件中的值
+        :return: 是否成功抓取
+        """
         try:
             # 使用配置文件中的参数或默认值
             target_distance = target_distance or Config.target_distance
             target_x = target_x or Config.target_x
             max_attempts = max_attempts or Config.max_attempts
 
-            print(f"开始PID控制自动逼近，目标距离: {target_distance}mm, 目标X: {target_x}mm")
+            print(f"开始原始PID控制自动逼近，目标距离: {target_distance}mm, 目标X: {target_x}mm")
 
             # 确保车辆停止
             self.car_move_func("stop", 0)
@@ -134,31 +146,23 @@ class Controller:
 
             attempts = 0
 
-            # 设置容差范围
-            x_tolerance = 40  # X容差（毫米）
-            distance_tolerance = 40  # 距离容差（毫米）
-
-            # 近距离时的容差范围
-            near_x_tolerance = 60  # 近距离X容差（毫米）
-            near_distance_tolerance = 30  # 近距离距离容差（毫米）
-
-            # 近距离阈值（米）
-            near_distance_threshold = 0.4
+            # 设置固定的容差范围
+            x_tolerance = 50  # X容差（毫米）
+            distance_tolerance = 50  # 距离容差（毫米）
             
             # 最大连续未检测次数
             max_no_detection = 5
             no_detection_count = 0
             
-            # PID控制器参数
-            # X轴PID参数 - 优化后的参数，增加比例增益，减少积分作用，增加微分作用抑制抖动
-            kp_x = 0.015  # 增加比例系数提高响应速度
-            ki_x = 0.0005  # 减少积分系数避免累积过多导致超调和抖动
-            kd_x = 0.006  # 增加微分系数抑制抖动
+            # 基础PID控制器参数
+            kp_x = 0.015  # 比例系数
+            ki_x = 0.001  # 积分系数
+            kd_x = 0.004  # 微分系数
             
-            # 距离PID参数 - 优化后的参数，增加比例增益，减少积分作用
-            kp_distance = 0.012  # 增加比例系数提高响应速度
-            ki_distance = 0.0005  # 减少积分系数避免累积过多
-            kd_distance = 0.004  # 适当增加微分系数
+            # 距离PID参数
+            kp_distance = 0.012  # 比例系数
+            ki_distance = 0.001  # 积分系数
+            kd_distance = 0.003  # 微分系数
             
             # PID历史值
             prev_x_error = 0
@@ -166,38 +170,27 @@ class Controller:
             prev_distance_error = 0
             integral_distance = 0
             
-            # 控制周期 - 延长控制周期减少控制频率
-            control_period = 0.1  # 增加到100ms减少控制频率
+            # 控制周期
+            control_period = 0.1  # 100ms控制周期
             
             # 速度限制
-            max_speed = Config.speed * 1.3  # 进一步提高最大速度
-            min_speed = max_speed * 0.3  # 略微降低最小速度下限
-            
-            # 添加误差死区 - 小误差时不动作，减少不必要的调整
-            error_deadband = 20  # 误差死区（毫米）
-            
-            # 上次控制时间
-            last_control_time = time.time()
+            max_speed = Config.speed * 1.5
+            min_speed = max_speed * 0.2
 
             while attempts < max_attempts:
-                current_time = time.time()
+                # current_time = time.time()
                 
-                # 控制周期检查
-                if current_time - last_control_time < control_period:
-                    time.sleep(0.01)
-                    continue
-                last_control_time = current_time
+                # # 控制周期检查
+                # if current_time - last_control_time < control_period:
+                #     time.sleep(0.01)
+                #     continue
+                # last_control_time = current_time
                 
                 # 进行视觉处理
                 intr, depth_intrin, rgb, depth, aligned_depth_frame, results, results_boxes, camera_coordinate_list, rgb_display = self.vision_system.vision_process()
-                
-                # 获取当前检测模式和速度因子
-                detection_mode = self.vision_system.detection_mode
-                model_type = self.vision_system.model_type
-                move_time_multiplier = self.vision_system.get_move_time_multiplier()
 
                 # 在图像上显示当前状态
-                cv2.putText(rgb_display, f"尝试: {attempts+1}/{max_attempts} | PID控制模式",
+                cv2.putText(rgb_display, f"尝试: {attempts+1}/{max_attempts} | 原始PID模式",
                             (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
                 
                 # 获取目标乒乓球的三维坐标
@@ -212,7 +205,6 @@ class Controller:
                     if no_detection_count >= max_no_detection:
                         print(f"连续 {no_detection_count} 次未检测到乒乓球，停止车辆")
                         self.car_move_func("stop", 0)
-                        self.vision_system.set_vehicle_moving_state(False)
                         time.sleep(0.5)
                         no_detection_count = 0
                         attempts += 1
@@ -248,34 +240,15 @@ class Controller:
                 cv2.putText(rgb_display, f"X误差: {x_error:.1f}mm, 距离误差: {distance_error:.1f}mm",
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2, cv2.LINE_AA)
                 
-                # 计算目标的实际距离（米）
-                actual_distance = (pos[0]**2 + pos[1]**2 + pos[2]**2)**0.5
-                is_near_distance = actual_distance < near_distance_threshold
-                
-                # 根据距离选择容差
-                if is_near_distance:
-                    print(f"近距离模式（{actual_distance:.2f}m）：使用更严格的控制参数")
-                    current_x_tolerance = near_x_tolerance
-                    current_distance_tolerance = near_distance_tolerance
-                    # 近距离时增加比例增益
-                    current_kp_x = kp_x * 1.2
-                    current_kp_distance = kp_distance * 1.2
-                else:
-                    current_x_tolerance = x_tolerance
-                    current_distance_tolerance = distance_tolerance
-                    current_kp_x = kp_x
-                    current_kp_distance = kp_distance
-                
                 # 判断是否已经达到目标位置
-                if abs(x_error) < current_x_tolerance and abs(distance_error) < current_distance_tolerance:
+                if abs(x_error) < x_tolerance and abs(distance_error) < distance_tolerance:
                     print("已到达目标位置，准备抓取")
                     self.car_move_func("stop", 0)
-                    self.vision_system.set_vehicle_moving_state(False)
                     time.sleep(0.5)
                     
                     # 最终确认位置
                     intr, depth_intrin, rgb, depth, aligned_depth_frame, results, results_boxes, camera_coordinate_list, rgb_display = self.vision_system.vision_process()
-                    pos = self.vision_system.choose_pingpang_new(results_boxes, camera_coordinate_list, rgb, depth, aligned_depth_frame, depth_intrin)
+                    pos = self.vision_system.choose_pingpang_new(results_boxes, camera_coordinate_list, rgb, depth, aligned_depth_frame, depth_intrin)     
                     
                     if pos is not None:
                         transformed_pos = self.vision_system.position_change(pos.copy())
@@ -290,19 +263,7 @@ class Controller:
                         x_error = current_x - target_x
                         distance_error = current_distance - target_distance
                         
-                        # 计算目标的实际距离（米）
-                        actual_distance = (pos[0]**2 + pos[1]**2 + pos[2]**2)**0.5
-                        final_is_near_distance = actual_distance < near_distance_threshold
-                        
-                        # 根据距离选择最终确认容差
-                        if final_is_near_distance:
-                            final_x_tolerance = 60  # 近距离最终确认的X容差（毫米）
-                            final_distance_tolerance = 45  # 近距离最终确认的距离容差（毫米）
-                        else:
-                            final_x_tolerance = 50  # 远距离最终确认的X容差（毫米）
-                            final_distance_tolerance = 50  # 远距离最终确认的距离容差（毫米）
-                        
-                        if abs(x_error) < final_x_tolerance and abs(distance_error) < final_distance_tolerance:
+                        if abs(x_error) < 60 and abs(distance_error) < 60:
                             print("位置确认无误，开始抓取乒乓球")
                             self.arm_control(pos)
                             return True
@@ -317,148 +278,50 @@ class Controller:
                     prev_distance_error = 0
                     integral_distance = 0
                 else:
-                    # 计算PID控制输出
-                    # X轴PID - 增加误差过滤和输出平滑
-                    proportional_x = current_kp_x * x_error
-                    
-                    # 积分饱和和积分分离策略：误差较大时减少积分作用
-                    if abs(x_error) > current_x_tolerance * 2:
-                        integral_x += ki_x * x_error * control_period * 0.3  # 误差大时减弱积分
-                    else:
-                        integral_x += ki_x * x_error * control_period
-                    
-                    # 增强积分限制
-                    integral_x = max(min(integral_x, 10), -10)  # 减少积分上限避免过大的累积
-                    
+                    # 最原始PID控制计算
+                    # X轴PID - 无任何限制
+                    integral_x += ki_x * x_error * control_period
                     derivative_x = kd_x * (x_error - prev_x_error) / control_period
-                    
-                    # 平滑输出：使用低通滤波减少抖动
-                    x_output = proportional_x + integral_x + derivative_x
+                    x_output = kp_x * x_error + integral_x + derivative_x
                     prev_x_error = x_error
                     
-                    # 距离PID
-                    proportional_distance = current_kp_distance * distance_error
-                    
-                    # 距离控制的积分分离
-                    if abs(distance_error) > current_distance_tolerance * 2:
-                        integral_distance += ki_distance * distance_error * control_period * 0.3
-                    else:
-                        integral_distance += ki_distance * distance_error * control_period
-                    
-                    # 增强积分限制
-                    integral_distance = max(min(integral_distance, 10), -10)
-                    
+                    # 距离PID - 无任何限制
+                    integral_distance += ki_distance * distance_error * control_period
                     derivative_distance = kd_distance * (distance_error - prev_distance_error) / control_period
-                    
-                    # 距离控制输出
-                    distance_output = proportional_distance + integral_distance + derivative_distance
+                    distance_output = kp_distance * distance_error + integral_distance + derivative_distance
                     prev_distance_error = distance_error
                     
                     # 显示PID信息
-                    cv2.putText(rgb_display, f"X-PID: {proportional_x:.2f}, {integral_x:.2f}, {derivative_x:.2f}",
+                    cv2.putText(rgb_display, f"X-PID: {kp_x*x_error:.2f}, {integral_x:.2f}, {derivative_x:.2f}",
                                 (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
-                    cv2.putText(rgb_display, f"D-PID: {proportional_distance:.2f}, {integral_distance:.2f}, {derivative_distance:.2f}",
+                    cv2.putText(rgb_display, f"D-PID: {kp_distance*distance_error:.2f}, {integral_distance:.2f}, {derivative_distance:.2f}",
                                 (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
                     
-                    # 确定移动方向和速度
-                    # 优先调整误差较大的方向
+                    # 确定移动方向和速度 - 简单逻辑
                     if abs(x_output) > abs(distance_output):
                         # 调整X轴
                         direction = "right" if x_output > 0 else "left"
-                        
-                        # 非线性速度映射
-                        # 检查误差是否在死区内
-                        if abs(x_error) < error_deadband:
-                            # 误差在死区内，不进行移动
-                            print(f"X轴误差在死区内 ({abs(x_error)}mm < {error_deadband}mm)，不进行移动")
-                            continue
-                        
-                        if abs(x_error) < current_x_tolerance * 0.5:
-                            # 误差较小时，使用适当的速度
-                            speed = min(max(abs(x_output) * 0.7, min_speed), max_speed * 0.6)
-                        elif abs(x_error) > current_x_tolerance * 3:
-                            # 误差较大时，增加速度
-                            speed = min(max(abs(x_output) * 1.2, min_speed), max_speed)
-                        else:
-                            # 正常误差范围
-                            speed = min(max(abs(x_output), min_speed), max_speed)
-                        
-                        # 根据距离调整速度 - 已在移动前统一处理
-                        
-                        print(f"PID控制 - 调整X轴: {direction}, 速度: {speed:.2f}, 输出: {x_output:.2f}")
+                        speed = min(max(abs(x_output), min_speed), max_speed)
+                        print(f"原始PID控制 - 调整X轴: {direction}, 速度: {speed:.2f}, 输出: {x_output:.2f}")
                         
                     else:
                         # 调整距离
                         direction = "front" if distance_output > 0 else "back"
-                        
-                        # 非线性速度映射
-                        # 检查误差是否在死区内
-                        if abs(distance_error) < error_deadband:
-                            # 误差在死区内，不进行移动
-                            print(f"距离误差在死区内 ({abs(distance_error)}mm < {error_deadband}mm)，不进行移动")
-                            continue
-                        
-                        if abs(distance_error) < current_distance_tolerance * 0.5:
-                            speed = min(max(abs(distance_output) * 0.7, min_speed), max_speed * 0.6)
-                        elif abs(distance_error) > current_distance_tolerance * 3:
-                            speed = min(max(abs(distance_output) * 1.2, min_speed), max_speed)
-                        else:
-                            speed = min(max(abs(distance_output), min_speed), max_speed)
-                        
-                        # 根据距离调整速度 - 已在移动前统一处理
-                        
-                        # 前进时考虑检测模式的延迟
-                        if direction == "front" and (detection_mode == "cloud" or model_type == "heavy"):
-                            speed *= 0.9  # 略微降低云端模式的减速比例
-                            print(f"PID控制 - 调整距离: {direction}, 速度: {speed:.2f}, 输出: {distance_output:.2f} (云端/大体积模型减速)")
-                        else:
-                            print(f"PID控制 - 调整距离: {direction}, 速度: {speed:.2f}, 输出: {distance_output:.2f}")
+                        speed = min(max(abs(distance_output), min_speed), max_speed)
+                        print(f"原始PID控制 - 调整距离: {direction}, 速度: {speed:.2f}, 输出: {distance_output:.2f}")
                     
-                    # 根据距离调整速度
-                    if is_near_distance:
-                        # 近距离时显著降低速度以提高精度
-                        speed *= 0.6  # 近距离减速比例从0.8降低到0.6
-                        print(f"近距离模式：降低移动速度至{speed:.2f}")
-                    
-                    # 执行移动
+                    # 执行移动 - 固定移动时间
                     self.car_move_func(direction, speed)
-                    self.vision_system.set_vehicle_moving_state(True)
                     
-                    # 智能移动时间调整：根据误差大小和速度动态调整移动时间
-                    # 误差越大，移动时间越长
-                    error_factor = 1.0
-                    if direction in ["right", "left"]:
-                        error_factor = min(abs(x_error) / current_x_tolerance, 2.0)
-                    else:
-                        error_factor = min(abs(distance_error) / current_distance_tolerance, 2.0)
-                    
-                    # 基础移动时间
-                    move_time = control_period * error_factor
-                    
-                    # 速度因素调整：速度越低，移动时间越长
-                    speed_factor = 1.0
-                    if speed < max_speed * 0.5:
-                        speed_factor = 1.8
-                    elif speed < max_speed * 0.7:
-                        speed_factor = 1.4
-                    
-                    move_time *= speed_factor
-                    
-                    # 确保最小移动时间，避免过于频繁的启停
-                    min_move_time = 0.2  # 最小移动时间0.2秒
-                    move_time = max(move_time, min_move_time)
-                    
+                    # 固定移动时间
+                    move_time = 0.3  # 固定300ms移动时间
                     print(f"执行移动: 方向={direction}, 速度={speed:.2f}, 移动时间={move_time:.2f}秒")
                     
-                    time.sleep(move_time)
+                    # time.sleep(move_time)
                     
-                    # 远距离模式：实现连续控制（不停顿），近距离模式：移动后停止以获取准确数据
-                    if is_near_distance:
-                        print("近距离模式：移动后停止，准备下一次精确检测")
-                        self.car_move_func("stop", 0)
-                        self.vision_system.set_vehicle_moving_state(False)
-                        time.sleep(0.1)  # 短暂等待确保车辆完全停止
-                    # 远距离模式下不执行停止命令，实现连续控制
+                    # # 停止
+                    # self.car_move_func("stop", 0)
+                    # time.sleep(0.1)
                 
                 # 显示图像
                 cv2.imshow('RGB image', rgb_display)
@@ -470,16 +333,831 @@ class Controller:
             return False
             
         except Exception as e:
-            print(f"PID控制发生异常: {e}")
+            print(f"原始PID控制发生异常: {e}")
             import traceback
             traceback.print_exc()
             self.car_move_func("stop", 0)
-            self.vision_system.set_vehicle_moving_state(False)
             time.sleep(0.5)
             return False
         finally:
             # 无论如何都确保车辆停止
             self.car_move_func("stop", 0)
+        
+        # try:
+        #     # 使用配置文件中的参数或默认值
+        #     target_distance = target_distance or Config.target_distance
+        #     target_x = target_x or Config.target_x
+        #     max_attempts = max_attempts or Config.max_attempts
+
+        #     print(f"开始固定PID控制自动逼近，目标距离: {target_distance}mm, 目标X: {target_x}mm")
+
+        #     # 确保车辆停止
+        #     self.car_move_func("stop", 0)
+        #     time.sleep(0.5)
+
+        #     attempts = 0
+
+        #     # 设置固定的容差范围
+        #     x_tolerance = 50  # X容差（毫米）
+        #     distance_tolerance = 50  # 距离容差（毫米）
+            
+        #     # 最大连续未检测次数
+        #     max_no_detection = 5
+        #     no_detection_count = 0
+            
+        #     # 固定PID控制器参数 - 使用中等参数值
+        #     kp_x = 0.014  # 比例系数
+        #     ki_x = 0.0006  # 积分系数
+        #     kd_x = 0.005  # 微分系数
+            
+        #     # 距离PID参数
+        #     kp_distance = 0.011  # 比例系数
+        #     ki_distance = 0.0006  # 积分系数
+        #     kd_distance = 0.003  # 微分系数
+            
+        #     # PID历史值
+        #     prev_x_error = 0
+        #     integral_x = 0
+        #     prev_distance_error = 0
+        #     integral_distance = 0
+            
+        #     # 控制周期
+        #     control_period = 0.1  # 100ms控制周期
+            
+        #     # 速度限制
+        #     max_speed = Config.speed * 1.3
+        #     min_speed = max_speed * 0.3
+            
+        #     # 固定误差死区
+        #     error_deadband = 25  # 误差死区（毫米）
+            
+        #     # 历史数据记录
+        #     self.prev_distance = None
+        #     self.prev_time = None
+            
+        #     # 震荡检测相关变量
+        #     oscillation_count = 0
+        #     last_direction = None
+        #     max_oscillation_count = 3
+            
+        #     # 上次控制时间
+        #     last_control_time = time.time()
+
+        #     while attempts < max_attempts:
+        #         current_time = time.time()
+                
+        #         # 控制周期检查
+        #         if current_time - last_control_time < control_period:
+        #             time.sleep(0.01)
+        #             continue
+        #         last_control_time = current_time
+                
+        #         # 进行视觉处理
+        #         intr, depth_intrin, rgb, depth, aligned_depth_frame, results, results_boxes, camera_coordinate_list, rgb_display = self.vision_system.vision_process()
+                
+        #         # 获取当前检测模式和速度因子
+        #         detection_mode = self.vision_system.detection_mode
+        #         model_type = self.vision_system.model_type
+        #         move_time_multiplier = self.vision_system.get_move_time_multiplier()
+
+        #         # 在图像上显示当前状态
+        #         cv2.putText(rgb_display, f"尝试: {attempts+1}/{max_attempts} | 固定PID模式",
+        #                     (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
+                
+        #         # 获取目标乒乓球的三维坐标
+        #         pos = self.vision_system.choose_pingpang_new(results_boxes, camera_coordinate_list, rgb, depth, aligned_depth_frame, depth_intrin)
+
+        #         # 如果没有检测到乒乓球
+        #         if pos is None:
+        #             print("未检测到乒乓球或深度数据无效")
+        #             no_detection_count += 1
+                    
+        #             # 如果连续多次未检测到，停止车辆
+        #             if no_detection_count >= max_no_detection:
+        #                 print(f"连续 {no_detection_count} 次未检测到乒乓球，停止车辆")
+        #                 self.car_move_func("stop", 0)
+        #                 self.vision_system.set_vehicle_moving_state(False)
+        #                 time.sleep(0.5)
+        #                 no_detection_count = 0
+        #                 attempts += 1
+                    
+        #             cv2.imshow('RGB image', rgb_display)
+        #             cv2.waitKey(1)
+        #             continue
+
+        #         # 重置未检测计数
+        #         no_detection_count = 0
+                
+        #         # 将摄像头坐标系转换为机械臂坐标系
+        #         transformed_pos = self.vision_system.position_change(pos.copy())
+                
+        #         # 检查转换后的坐标是否有效
+        #         if transformed_pos[0] == 0 and transformed_pos[1] == 0 and transformed_pos[2] == 0:
+        #             print("转换后的坐标无效")
+        #             cv2.imshow('RGB image', rgb_display)
+        #             cv2.waitKey(1)
+        #             attempts += 1
+        #             continue
+                
+        #         # 计算当前位置与目标位置的差距
+        #         current_x = transformed_pos[0]
+        #         current_distance = transformed_pos[1]
+        #         x_error = current_x - target_x
+        #         distance_error = current_distance - target_distance
+                
+        #         print(f"当前位置: X={current_x}mm, 距离={current_distance}mm")
+        #         print(f"位置误差: X误差={x_error}mm, 距离误差={distance_error}mm")
+                
+        #         # 在图像上显示位置信息
+        #         cv2.putText(rgb_display, f"X误差: {x_error:.1f}mm, 距离误差: {distance_error:.1f}mm",
+        #                     (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2, cv2.LINE_AA)
+                
+        #         # 计算目标的实际距离（米）
+        #         actual_distance = (pos[0]**2 + pos[1]**2 + pos[2]**2)**0.5
+                
+        #         # 固定PID模式 - 移除所有分段逻辑
+        #         print(f"固定PID模式：距离={actual_distance:.3f}m")
+                
+        #         # 判断是否已经达到目标位置
+        #         if abs(x_error) < x_tolerance and abs(distance_error) < distance_tolerance:
+        #             print("已到达目标位置，准备抓取")
+        #             self.car_move_func("stop", 0)
+        #             self.vision_system.set_vehicle_moving_state(False)
+        #             time.sleep(0.5)
+                    
+        #             # 最终确认位置
+        #             intr, depth_intrin, rgb, depth, aligned_depth_frame, results, results_boxes, camera_coordinate_list, rgb_display = self.vision_system.vision_process()
+        #             pos = self.vision_system.choose_pingpang_new(results_boxes, camera_coordinate_list, rgb, depth, aligned_depth_frame, depth_intrin)
+                    
+        #             if pos is not None:
+        #                 transformed_pos = self.vision_system.position_change(pos.copy())
+                        
+        #                 if transformed_pos[0] == 0 and transformed_pos[1] == 0 and transformed_pos[2] == 0:
+        #                     print("最终位置确认时，转换后的坐标无效")
+        #                     attempts += 1
+        #                     continue
+                        
+        #                 current_x = transformed_pos[0]
+        #                 current_distance = transformed_pos[1]
+        #                 x_error = current_x - target_x
+        #                 distance_error = current_distance - target_distance
+                        
+        #                 final_x_tolerance = 60
+        #                 final_distance_tolerance = 60
+                        
+        #                 if abs(x_error) < final_x_tolerance and abs(distance_error) < final_distance_tolerance:
+        #                     print("位置确认无误，开始抓取乒乓球")
+        #                     self.arm_control(pos)
+        #                     return True
+        #                 else:
+        #                     print(f"最终位置有偏差，X偏差: {abs(x_error)}mm, 距离偏差: {abs(distance_error)}mm，重新调整")
+        #             else:
+        #                 print("最终确认时未检测到合适的乒乓球")
+                    
+        #             # 重置PID历史值
+        #             prev_x_error = 0
+        #             integral_x = 0
+        #             prev_distance_error = 0
+        #             integral_distance = 0
+        #             oscillation_count = 0
+        #         else:
+        #             # 计算PID控制输出
+        #             # X轴PID
+        #             proportional_x = kp_x * x_error
+                    
+        #             # 积分饱和和积分分离策略
+        #             if abs(x_error) > x_tolerance * 2:
+        #                 integral_x += ki_x * x_error * control_period * 0.3
+        #             else:
+        #                 integral_x += ki_x * x_error * control_period
+                    
+        #             # 积分限制
+        #             integral_x = max(min(integral_x, 10), -10)
+                    
+        #             derivative_x = kd_x * (x_error - prev_x_error) / control_period
+                    
+        #             # 平滑输出
+        #             x_output = proportional_x + integral_x + derivative_x
+        #             prev_x_error = x_error
+                    
+        #             # 距离PID
+        #             proportional_distance = kp_distance * distance_error
+                    
+        #             # 距离控制的积分分离
+        #             if abs(distance_error) > distance_tolerance * 2:
+        #                 integral_distance += ki_distance * distance_error * control_period * 0.3
+        #             else:
+        #                 integral_distance += ki_distance * distance_error * control_period
+                    
+        #             # 积分限制
+        #             integral_distance = max(min(integral_distance, 10), -10)
+                    
+        #             derivative_distance = kd_distance * (distance_error - prev_distance_error) / control_period
+                    
+        #             # 距离控制输出
+        #             distance_output = proportional_distance + integral_distance + derivative_distance
+        #             prev_distance_error = distance_error
+                    
+        #             # 显示PID信息
+        #             cv2.putText(rgb_display, f"X-PID: {proportional_x:.2f}, {integral_x:.2f}, {derivative_x:.2f}",
+        #                         (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+        #             cv2.putText(rgb_display, f"D-PID: {proportional_distance:.2f}, {integral_distance:.2f}, {derivative_distance:.2f}",
+        #                         (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+                    
+        #             # 确定移动方向和速度
+        #             if abs(x_output) > abs(distance_output):
+        #                 # 调整X轴
+        #                 direction = "right" if x_output > 0 else "left"
+                        
+        #                 # 震荡检测
+        #                 if last_direction and last_direction != direction and abs(x_error) < x_tolerance * 1.5:
+        #                     oscillation_count += 1
+        #                     print(f"震荡检测: 方向改变 {last_direction}->{direction}, 震荡计数: {oscillation_count}")
+        #                 else:
+        #                     oscillation_count = max(0, oscillation_count - 0.5)
+        #                 last_direction = direction
+                        
+        #                 # 检查误差是否在死区内
+        #                 if abs(x_error) < error_deadband:
+        #                     print(f"X轴误差在死区内 ({abs(x_error)}mm < {error_deadband}mm)，不进行移动")
+        #                     continue
+                        
+        #                 # 非线性速度映射 + 震荡抑制
+        #                 if oscillation_count >= max_oscillation_count:
+        #                     # 震荡严重时显著降低速度
+        #                     speed = min_speed * 0.8
+        #                     print(f"震荡抑制：降低速度至{speed:.2f}")
+        #                 elif abs(x_error) < x_tolerance * 0.5:
+        #                     speed = min(max(abs(x_output) * 0.7, min_speed), max_speed * 0.6)
+        #                 elif abs(x_error) > x_tolerance * 3:
+        #                     speed = min(max(abs(x_output) * 1.2, min_speed), max_speed)
+        #                 else:
+        #                     speed = min(max(abs(x_output), min_speed), max_speed)
+                        
+        #                 print(f"固定PID控制 - 调整X轴: {direction}, 速度: {speed:.2f}, 输出: {x_output:.2f}")
+                        
+        #             else:
+        #                 # 调整距离
+        #                 direction = "front" if distance_output > 0 else "back"
+                        
+        #                 # 震荡检测
+        #                 if last_direction and last_direction != direction and abs(distance_error) < distance_tolerance * 1.5:
+        #                     oscillation_count += 1
+        #                     print(f"震荡检测: 方向改变 {last_direction}->{direction}, 震荡计数: {oscillation_count}")
+        #                 else:
+        #                     oscillation_count = max(0, oscillation_count - 0.5)
+        #                 last_direction = direction
+                        
+        #                 # 检查误差是否在死区内
+        #                 if abs(distance_error) < error_deadband:
+        #                     print(f"距离误差在死区内 ({abs(distance_error)}mm < {error_deadband}mm)，不进行移动")
+        #                     continue
+                        
+        #                 # 非线性速度映射 + 震荡抑制
+        #                 if oscillation_count >= max_oscillation_count:
+        #                     speed = min_speed * 0.8
+        #                     print(f"震荡抑制：降低速度至{speed:.2f}")
+        #                 elif abs(distance_error) < distance_tolerance * 0.5:
+        #                     speed = min(max(abs(distance_output) * 0.7, min_speed), max_speed * 0.6)
+        #                 elif abs(distance_error) > distance_tolerance * 3:
+        #                     speed = min(max(abs(distance_output) * 1.2, min_speed), max_speed)
+        #                 else:
+        #                     speed = min(max(abs(distance_output), min_speed), max_speed)
+                        
+        #                 # 前进时考虑检测模式的延迟
+        #                 if direction == "front" and (detection_mode == "cloud" or model_type == "heavy"):
+        #                     speed *= 0.9
+        #                     print(f"固定PID控制 - 调整距离: {direction}, 速度: {speed:.2f}, 输出: {distance_output:.2f} (云端/大体积模型减速)")
+        #                 else:
+        #                     print(f"固定PID控制 - 调整距离: {direction}, 速度: {speed:.2f}, 输出: {distance_output:.2f}")
+                    
+        #             # 预测性控制（保留）
+        #             if direction in ["front", "back"] and self.prev_distance is not None:
+        #                 current_time = time.time()
+        #                 if self.prev_time is not None:
+        #                     time_diff = current_time - self.prev_time
+        #                     if time_diff > 0:
+        #                         distance_rate = (actual_distance - self.prev_distance) / time_diff
+                                
+        #                         # 如果快速接近目标且误差较小，提前减速
+        #                         if direction == "front" and distance_rate < -0.1 and abs(distance_error) < 100:
+        #                             speed *= 0.7
+        #                             print(f"预测性减速：接近速度{distance_rate:.2f}m/s, 调整速度至{speed:.2f}")
+                    
+        #             # 更新历史数据
+        #             self.prev_distance = actual_distance
+        #             self.prev_time = time.time()
+                    
+        #             # 执行移动
+        #             self.car_move_func(direction, speed)
+        #             self.vision_system.set_vehicle_moving_state(True)
+                    
+        #             # 智能移动时间调整
+        #             error_factor = 1.0
+        #             if direction in ["right", "left"]:
+        #                 error_factor = min(abs(x_error) / x_tolerance, 2.0)
+        #             else:
+        #                 error_factor = min(abs(distance_error) / distance_tolerance, 2.0)
+                    
+        #             # 基础移动时间
+        #             move_time = control_period * error_factor
+                    
+        #             # 速度因素调整
+        #             speed_factor = 1.0
+        #             if speed < max_speed * 0.5:
+        #                 speed_factor = 1.8
+        #             elif speed < max_speed * 0.7:
+        #                 speed_factor = 1.4
+                    
+        #             move_time *= speed_factor
+                    
+        #             # 固定最小移动时间
+        #             min_move_time = 0.2
+        #             move_time = max(move_time, min_move_time)
+                    
+        #             print(f"执行移动: 方向={direction}, 速度={speed:.2f}, 移动时间={move_time:.2f}秒")
+                    
+        #             # time.sleep(move_time)
+                    
+        #             # # 停止策略 - 固定策略
+        #             # self.car_move_func("stop", 0)
+        #             # self.vision_system.set_vehicle_moving_state(False)
+        #             # time.sleep(0.1)
+                
+        #         # 显示图像
+        #         cv2.imshow('RGB image', rgb_display)
+        #         cv2.waitKey(1)
+                
+        #         attempts += 1
+            
+        #     print(f"已尝试 {max_attempts} 次，未能成功逼近并抓取")
+        #     return False
+            
+        # except Exception as e:
+        #     print(f"固定PID控制发生异常: {e}")
+        #     import traceback
+        #     traceback.print_exc()
+        #     self.car_move_func("stop", 0)
+        #     self.vision_system.set_vehicle_moving_state(False)
+        #     time.sleep(0.5)
+        #     return False
+        # finally:
+        #     # 无论如何都确保车辆停止
+        #     self.car_move_func("stop", 0)
+        #     self.vision_system.set_vehicle_moving_state(False)
+        # try:
+        #     # 使用配置文件中的参数或默认值
+        #     target_distance = target_distance or Config.target_distance
+        #     target_x = target_x or Config.target_x
+        #     max_attempts = max_attempts or Config.max_attempts
+
+        #     print(f"开始PID控制自动逼近，目标距离: {target_distance}mm, 目标X: {target_x}mm")
+
+        #     # 确保车辆停止
+        #     self.car_move_func("stop", 0)
+        #     time.sleep(0.5)
+
+        #     attempts = 0
+
+        #     # 设置容差范围
+        #     x_tolerance = 40  # X容差（毫米）
+        #     distance_tolerance = 40  # 距离容差（毫米）
+
+        #     # 近距离时的容差范围
+        #     near_x_tolerance = 60  # 近距离X容差（毫米）
+        #     near_distance_tolerance = 30  # 近距离距离容差（毫米）
+
+        #     # 距离分段阈值（米）- 新增平滑过渡区域
+        #     near_threshold_low = 0.3   # 近距离阈值下限
+        #     near_threshold_high = 0.5  # 近距离阈值上限
+            
+        #     # 最大连续未检测次数
+        #     max_no_detection = 5
+        #     no_detection_count = 0
+            
+        #     # PID控制器参数
+        #     # X轴PID参数 - 优化后的参数
+        #     kp_x = 0.015  # 比例系数
+        #     ki_x = 0.0005  # 积分系数
+        #     kd_x = 0.006  # 微分系数
+            
+        #     # 距离PID参数
+        #     kp_distance = 0.012  # 比例系数
+        #     ki_distance = 0.0005  # 积分系数
+        #     kd_distance = 0.004  # 微分系数
+            
+        #     # PID历史值
+        #     prev_x_error = 0
+        #     integral_x = 0
+        #     prev_distance_error = 0
+        #     integral_distance = 0
+            
+        #     # 控制周期
+        #     control_period = 0.1  # 100ms控制周期
+            
+        #     # 速度限制
+        #     max_speed = Config.speed * 1.3
+        #     min_speed = max_speed * 0.3
+            
+        #     # 基础误差死区
+        #     error_deadband = 20  # 误差死区（毫米）
+            
+        #     # 历史数据记录（用于预测控制）
+        #     self.prev_distance = None
+        #     self.prev_time = None
+            
+        #     # 震荡检测相关变量
+        #     oscillation_count = 0
+        #     last_direction = None
+        #     max_oscillation_count = 3
+            
+        #     # 上次控制时间
+        #     last_control_time = time.time()
+
+        #     while attempts < max_attempts:
+        #         current_time = time.time()
+                
+        #         # 控制周期检查
+        #         if current_time - last_control_time < control_period:
+        #             time.sleep(0.01)
+        #             continue
+        #         last_control_time = current_time
+                
+        #         # 进行视觉处理
+        #         intr, depth_intrin, rgb, depth, aligned_depth_frame, results, results_boxes, camera_coordinate_list, rgb_display = self.vision_system.vision_process()
+                
+        #         # 获取当前检测模式和速度因子
+        #         detection_mode = self.vision_system.detection_mode
+        #         model_type = self.vision_system.model_type
+        #         move_time_multiplier = self.vision_system.get_move_time_multiplier()
+
+        #         # 在图像上显示当前状态
+        #         cv2.putText(rgb_display, f"尝试: {attempts+1}/{max_attempts} | PID控制模式",
+        #                     (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
+                
+        #         # 获取目标乒乓球的三维坐标
+        #         pos = self.vision_system.choose_pingpang_new(results_boxes, camera_coordinate_list, rgb, depth, aligned_depth_frame, depth_intrin)
+
+        #         # 如果没有检测到乒乓球
+        #         if pos is None:
+        #             print("未检测到乒乓球或深度数据无效")
+        #             no_detection_count += 1
+                    
+        #             # 如果连续多次未检测到，停止车辆
+        #             if no_detection_count >= max_no_detection:
+        #                 print(f"连续 {no_detection_count} 次未检测到乒乓球，停止车辆")
+        #                 self.car_move_func("stop", 0)
+        #                 self.vision_system.set_vehicle_moving_state(False)
+        #                 time.sleep(0.5)
+        #                 no_detection_count = 0
+        #                 attempts += 1
+                    
+        #             cv2.imshow('RGB image', rgb_display)
+        #             cv2.waitKey(1)
+        #             continue
+
+        #         # 重置未检测计数
+        #         no_detection_count = 0
+                
+        #         # 将摄像头坐标系转换为机械臂坐标系
+        #         transformed_pos = self.vision_system.position_change(pos.copy())
+                
+        #         # 检查转换后的坐标是否有效
+        #         if transformed_pos[0] == 0 and transformed_pos[1] == 0 and transformed_pos[2] == 0:
+        #             print("转换后的坐标无效")
+        #             cv2.imshow('RGB image', rgb_display)
+        #             cv2.waitKey(1)
+        #             attempts += 1
+        #             continue
+                
+        #         # 计算当前位置与目标位置的差距
+        #         current_x = transformed_pos[0]
+        #         current_distance = transformed_pos[1]
+        #         x_error = current_x - target_x
+        #         distance_error = current_distance - target_distance
+                
+        #         print(f"当前位置: X={current_x}mm, 距离={current_distance}mm")
+        #         print(f"位置误差: X误差={x_error}mm, 距离误差={distance_error}mm")
+                
+        #         # 在图像上显示位置信息
+        #         cv2.putText(rgb_display, f"X误差: {x_error:.1f}mm, 距离误差: {distance_error:.1f}mm",
+        #                     (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2, cv2.LINE_AA)
+                
+        #         # 计算目标的实际距离（米）
+        #         actual_distance = (pos[0]**2 + pos[1]**2 + pos[2]**2)**0.5
+                
+        #         # ========== 新增：平滑过渡机制 ==========
+        #         # 判断当前距离区域
+        #         is_near_distance = actual_distance < near_threshold_low
+        #         is_far_distance = actual_distance > near_threshold_high
+        #         is_transition_zone = near_threshold_low <= actual_distance <= near_threshold_high
+                
+        #         # 平滑参数计算
+        #         if is_transition_zone:
+        #             # 计算过渡比例 (0-1, 0表示靠近近距离端，1表示靠近远距离端)
+        #             transition_ratio = (actual_distance - near_threshold_low) / (near_threshold_high - near_threshold_low)
+                    
+        #             # PID参数平滑过渡
+        #             current_kp_x = kp_x * (1 + 0.2 * (1 - transition_ratio))  # 从1.2倍到1倍
+        #             current_kp_distance = kp_distance * (1 + 0.2 * (1 - transition_ratio))
+                    
+        #             # 过渡区域增强微分抑制震荡
+        #             kd_x_boost = kd_x * 1.3
+        #             kd_distance_boost = kd_distance * 1.3
+                    
+        #             # 容差平滑过渡
+        #             current_x_tolerance = near_x_tolerance + (x_tolerance - near_x_tolerance) * transition_ratio
+        #             current_distance_tolerance = near_distance_tolerance + (distance_tolerance - near_distance_tolerance) * transition_ratio
+                    
+        #             # 动态死区：过渡区域增大死区
+        #             dynamic_deadband = error_deadband * (1 + 0.8 * (1 - abs(transition_ratio - 0.5) * 2))
+                    
+        #             print(f"过渡区域：距离={actual_distance:.3f}m, 过渡比例={transition_ratio:.2f}")
+        #             print(f"控制参数: KP_X={current_kp_x:.4f}, 死区={dynamic_deadband:.1f}mm")
+                    
+        #         elif is_near_distance:
+        #             # 近距离模式
+        #             current_kp_x = kp_x * 0.8
+        #             current_kp_distance = kp_distance * 0.8
+        #             kd_x_boost = kd_x
+        #             kd_distance_boost = kd_distance
+        #             current_x_tolerance = near_x_tolerance
+        #             current_distance_tolerance = near_distance_tolerance
+        #             dynamic_deadband = error_deadband
+        #             print("近距离模式")
+                    
+        #         else:
+        #             # 远距离模式
+        #             current_kp_x = kp_x
+        #             current_kp_distance = kp_distance
+        #             kd_x_boost = kd_x
+        #             kd_distance_boost = kd_distance
+        #             current_x_tolerance = x_tolerance
+        #             current_distance_tolerance = distance_tolerance
+        #             dynamic_deadband = error_deadband
+        #             print("远距离模式")
+        #         # ========== 平滑过渡机制结束 ==========
+                
+        #         # 判断是否已经达到目标位置
+        #         if abs(x_error) < current_x_tolerance and abs(distance_error) < current_distance_tolerance:
+        #             print("已到达目标位置，准备抓取")
+        #             self.car_move_func("stop", 0)
+        #             self.vision_system.set_vehicle_moving_state(False)
+        #             time.sleep(0.5)
+                    
+        #             # 最终确认位置
+        #             intr, depth_intrin, rgb, depth, aligned_depth_frame, results, results_boxes, camera_coordinate_list, rgb_display = self.vision_system.vision_process()
+        #             pos = self.vision_system.choose_pingpang_new(results_boxes, camera_coordinate_list, rgb, depth, aligned_depth_frame, depth_intrin)
+                    
+        #             if pos is not None:
+        #                 transformed_pos = self.vision_system.position_change(pos.copy())
+                        
+        #                 if transformed_pos[0] == 0 and transformed_pos[1] == 0 and transformed_pos[2] == 0:
+        #                     print("最终位置确认时，转换后的坐标无效")
+        #                     attempts += 1
+        #                     continue
+                        
+        #                 current_x = transformed_pos[0]
+        #                 current_distance = transformed_pos[1]
+        #                 x_error = current_x - target_x
+        #                 distance_error = current_distance - target_distance
+                        
+        #                 # 计算目标的实际距离（米）
+        #                 actual_distance = (pos[0]**2 + pos[1]**2 + pos[2]**2)**0.5
+                        
+        #                 # 根据距离选择最终确认容差
+        #                 if actual_distance < near_threshold_low:
+        #                     final_x_tolerance = 60
+        #                     final_distance_tolerance = 45
+        #                 else:
+        #                     final_x_tolerance = 50
+        #                     final_distance_tolerance = 50
+                        
+        #                 if abs(x_error) < final_x_tolerance and abs(distance_error) < final_distance_tolerance:
+        #                     print("位置确认无误，开始抓取乒乓球")
+        #                     self.arm_control(pos)
+        #                     return True
+        #                 else:
+        #                     print(f"最终位置有偏差，X偏差: {abs(x_error)}mm, 距离偏差: {abs(distance_error)}mm，重新调整")
+        #             else:
+        #                 print("最终确认时未检测到合适的乒乓球")
+                    
+        #             # 重置PID历史值
+        #             prev_x_error = 0
+        #             integral_x = 0
+        #             prev_distance_error = 0
+        #             integral_distance = 0
+        #             oscillation_count = 0  # 重置震荡计数
+        #         else:
+        #             # 计算PID控制输出
+        #             # X轴PID
+        #             proportional_x = current_kp_x * x_error
+                    
+        #             # 积分饱和和积分分离策略
+        #             if abs(x_error) > current_x_tolerance * 2:
+        #                 integral_x += ki_x * x_error * control_period * 0.3
+        #             else:
+        #                 integral_x += ki_x * x_error * control_period
+                    
+        #             # 积分限制
+        #             integral_x = max(min(integral_x, 10), -10)
+                    
+        #             derivative_x = kd_x_boost * (x_error - prev_x_error) / control_period
+                    
+        #             # 平滑输出
+        #             x_output = proportional_x + integral_x + derivative_x
+        #             prev_x_error = x_error
+                    
+        #             # 距离PID
+        #             proportional_distance = current_kp_distance * distance_error
+                    
+        #             # 距离控制的积分分离
+        #             if abs(distance_error) > current_distance_tolerance * 2:
+        #                 integral_distance += ki_distance * distance_error * control_period * 0.3
+        #             else:
+        #                 integral_distance += ki_distance * distance_error * control_period
+                    
+        #             # 积分限制
+        #             integral_distance = max(min(integral_distance, 10), -10)
+                    
+        #             derivative_distance = kd_distance_boost * (distance_error - prev_distance_error) / control_period
+                    
+        #             # 距离控制输出
+        #             distance_output = proportional_distance + integral_distance + derivative_distance
+        #             prev_distance_error = distance_error
+                    
+        #             # 显示PID信息
+        #             cv2.putText(rgb_display, f"X-PID: {proportional_x:.2f}, {integral_x:.2f}, {derivative_x:.2f}",
+        #                         (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+        #             cv2.putText(rgb_display, f"D-PID: {proportional_distance:.2f}, {integral_distance:.2f}, {derivative_distance:.2f}",
+        #                         (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+                    
+        #             # 确定移动方向和速度
+        #             if abs(x_output) > abs(distance_output):
+        #                 # 调整X轴
+        #                 direction = "right" if x_output > 0 else "left"
+                        
+        #                 # 震荡检测
+        #                 if last_direction and last_direction != direction and abs(x_error) < current_x_tolerance * 1.5:
+        #                     oscillation_count += 1
+        #                     print(f"震荡检测: 方向改变 {last_direction}->{direction}, 震荡计数: {oscillation_count}")
+        #                 else:
+        #                     oscillation_count = max(0, oscillation_count - 0.5)
+        #                 last_direction = direction
+                        
+        #                 # 检查误差是否在死区内
+        #                 if abs(x_error) < dynamic_deadband:
+        #                     print(f"X轴误差在死区内 ({abs(x_error)}mm < {dynamic_deadband}mm)，不进行移动")
+        #                     continue
+                        
+        #                 # 非线性速度映射 + 震荡抑制
+        #                 if oscillation_count >= max_oscillation_count:
+        #                     # 震荡严重时显著降低速度
+        #                     speed = min_speed * 0.8
+        #                     print(f"震荡抑制：降低速度至{speed:.2f}")
+        #                 elif abs(x_error) < current_x_tolerance * 0.5:
+        #                     speed = min(max(abs(x_output) * 0.7, min_speed), max_speed * 0.6)
+        #                 elif abs(x_error) > current_x_tolerance * 3:
+        #                     speed = min(max(abs(x_output) * 1.2, min_speed), max_speed)
+        #                 else:
+        #                     speed = min(max(abs(x_output), min_speed), max_speed)
+                        
+        #                 print(f"PID控制 - 调整X轴: {direction}, 速度: {speed:.2f}, 输出: {x_output:.2f}")
+                        
+        #             else:
+        #                 # 调整距离
+        #                 direction = "front" if distance_output > 0 else "back"
+                        
+        #                 # 震荡检测
+        #                 if last_direction and last_direction != direction and abs(distance_error) < current_distance_tolerance * 1.5:
+        #                     oscillation_count += 1
+        #                     print(f"震荡检测: 方向改变 {last_direction}->{direction}, 震荡计数: {oscillation_count}")
+        #                 else:
+        #                     oscillation_count = max(0, oscillation_count - 0.5)
+        #                 last_direction = direction
+                        
+        #                 # 检查误差是否在死区内
+        #                 if abs(distance_error) < dynamic_deadband:
+        #                     print(f"距离误差在死区内 ({abs(distance_error)}mm < {dynamic_deadband}mm)，不进行移动")
+        #                     continue
+                        
+        #                 # 非线性速度映射 + 震荡抑制
+        #                 if oscillation_count >= max_oscillation_count:
+        #                     speed = min_speed * 0.8
+        #                     print(f"震荡抑制：降低速度至{speed:.2f}")
+        #                 elif abs(distance_error) < current_distance_tolerance * 0.5:
+        #                     speed = min(max(abs(distance_output) * 0.7, min_speed), max_speed * 0.6)
+        #                 elif abs(distance_error) > current_distance_tolerance * 3:
+        #                     speed = min(max(abs(distance_output) * 1.2, min_speed), max_speed)
+        #                 else:
+        #                     speed = min(max(abs(distance_output), min_speed), max_speed)
+                        
+        #                 # 前进时考虑检测模式的延迟
+        #                 if direction == "front" and (detection_mode == "cloud" or model_type == "heavy"):
+        #                     speed *= 0.9
+        #                     print(f"PID控制 - 调整距离: {direction}, 速度: {speed:.2f}, 输出: {distance_output:.2f} (云端/大体积模型减速)")
+        #                 else:
+        #                     print(f"PID控制 - 调整距离: {direction}, 速度: {speed:.2f}, 输出: {distance_output:.2f}")
+                    
+        #             # ========== 新增：距离自适应速度调整 ==========
+        #             if is_transition_zone:
+        #                 # 过渡区域中等减速
+        #                 speed *= 0.75
+        #                 print(f"过渡区域：中等减速至{speed:.2f}")
+        #             elif is_near_distance:
+        #                 # 近距离显著减速
+        #                 speed *= 0.6
+        #                 print(f"近距离模式：显著减速至{speed:.2f}")
+        #             # 远距离模式保持原速度
+        #             # ========== 距离自适应速度调整结束 ==========
+                    
+        #             # ========== 新增：预测性控制 ==========
+        #             if direction in ["front", "back"] and self.prev_distance is not None:
+        #                 current_time = time.time()
+        #                 if self.prev_time is not None:
+        #                     time_diff = current_time - self.prev_time
+        #                     if time_diff > 0:
+        #                         distance_rate = (actual_distance - self.prev_distance) / time_diff
+                                
+        #                         # 如果快速接近目标且误差较小，提前减速
+        #                         if direction == "front" and distance_rate < -0.1 and abs(distance_error) < 100:
+        #                             speed *= 0.7
+        #                             print(f"预测性减速：接近速度{distance_rate:.2f}m/s, 调整速度至{speed:.2f}")
+                    
+        #             # 更新历史数据
+        #             self.prev_distance = actual_distance
+        #             self.prev_time = time.time()
+        #             # ========== 预测性控制结束 ==========
+                    
+        #             # 执行移动
+        #             self.car_move_func(direction, speed)
+        #             self.vision_system.set_vehicle_moving_state(True)
+                    
+        #             # 智能移动时间调整
+        #             error_factor = 1.0
+        #             if direction in ["right", "left"]:
+        #                 error_factor = min(abs(x_error) / current_x_tolerance, 2.0)
+        #             else:
+        #                 error_factor = min(abs(distance_error) / current_distance_tolerance, 2.0)
+                    
+        #             # 基础移动时间
+        #             move_time = control_period * error_factor
+                    
+        #             # 速度因素调整
+        #             speed_factor = 1.0
+        #             if speed < max_speed * 0.5:
+        #                 speed_factor = 1.8
+        #             elif speed < max_speed * 0.7:
+        #                 speed_factor = 1.4
+                    
+        #             move_time *= speed_factor
+                    
+        #             # 距离自适应移动时间
+        #             if is_transition_zone:
+        #                 move_time *= 0.8  # 过渡区域略微缩短移动时间
+        #             elif is_near_distance:
+        #                 move_time *= 0.7  # 近距离显著缩短移动时间
+                    
+        #             # 确保最小移动时间
+        #             if is_near_distance:
+        #                 min_move_time = 0.15
+        #             else:
+        #                 min_move_time = 0.2
+        #             move_time = max(move_time, min_move_time)
+                    
+        #             print(f"执行移动: 方向={direction}, 速度={speed:.2f}, 移动时间={move_time:.2f}秒")
+                    
+        #             time.sleep(move_time)
+                    
+        #             # # 停止策略
+        #             # if is_near_distance or is_transition_zone:
+        #             #     # 近距离和过渡区域：移动后停止以确保精度
+        #             #     self.car_move_func("stop", 0)
+        #             #     self.vision_system.set_vehicle_moving_state(False)
+        #             #     time.sleep(0.1)
+        #             # 远距离模式下不执行停止命令，实现连续控制
+                
+        #         # 显示图像
+        #         cv2.imshow('RGB image', rgb_display)
+        #         cv2.waitKey(1)
+                
+        #         attempts += 1
+            
+        #     print(f"已尝试 {max_attempts} 次，未能成功逼近并抓取")
+        #     return False
+            
+        # except Exception as e:
+        #     print(f"PID控制发生异常: {e}")
+        #     import traceback
+        #     traceback.print_exc()
+        #     self.car_move_func("stop", 0)
+        #     self.vision_system.set_vehicle_moving_state(False)
+        #     time.sleep(0.5)
+        #     return False
+        # finally:
+        #     # 无论如何都确保车辆停止
+        #     self.car_move_func("stop", 0)
+        #     self.vision_system.set_vehicle_moving_state(False)
 
     # def auto_approach_without_obstacle_avoidance(self, target_distance=None, target_x=None, max_attempts=None):
     #     """
